@@ -93,20 +93,107 @@ public class SentenceParserEditor : EditorWindow
     }
 
 
-    public string CreateRegexPattern(string input)
+    public string ConvertToRegex(string input)
     {
-        if (string.IsNullOrEmpty(input))
-        {
-            throw new ArgumentException("Input string cannot be empty.", nameof(input));
-        }
-
-        // Remove leading and trailing quotation marks if present
+        Stack<string> operatorStack = new Stack<string>();
+        Stack<string> valueStack = new Stack<string>();
 
         input = input.Trim();
-        string trimmedInput = input.Replace("\"", "");
-        
-        // Split the input based on spaces after removing '&'
-        var parts = trimmedInput.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (!input.StartsWith("("))
+        {
+            // Directly process the input if it does not start with '('
+            return ProcessExpression(input);
+        }
+
+        for (int i = 0; i < input.Length; i++)
+        {
+            char c = input[i];
+
+            if (c == '(')
+            {
+                operatorStack.Push(c.ToString());
+            }
+            else if (c == ')')
+            {
+
+                // need to change this logic 
+                string value = "";
+
+                if(operatorStack.Count > 0 && operatorStack.Peek() == "(")
+                {
+                    operatorStack.Pop();
+                    value = valueStack.Pop();
+                    //string val1 = ProcessExpression(value.Trim());
+
+                    if(operatorStack.Count>0 && operatorStack.Peek() == "!")
+                    {
+                        operatorStack.Pop();
+                        string data = $"(?!{value})";
+                        valueStack.Push(data);
+                    }
+                    else
+                    {
+                        string data = $"(?={value})";//.*
+                        valueStack.Push(data);
+                    }
+
+                }
+            }
+            else if (c == '|' || c == '!' || (c == '&' && (i + 1 < input.Length && !Char.IsLetterOrDigit(input[i + 1]))))
+            {
+                operatorStack.Push(c.ToString());
+            }
+            else
+            {
+                if (input[i] == ' ')
+                    continue;
+                string value = "";
+                while (i < input.Length && input[i] != '(' && input[i] != ')')//&& input[i] != '|' && input[i] != '&'
+                {
+                    value += input[i];
+                    i++;
+                }
+                i--;
+                string data = ProcessExpression(value.Trim());
+
+                valueStack.Push(data);
+            }
+        }
+        // Process remaining operators and values
+        while (operatorStack.Count > 0)
+        {
+            string op = operatorStack.Pop();
+            
+
+            if (op == "|")
+            {
+                string val1 = valueStack.Pop();
+                string val2 = valueStack.Pop();
+                valueStack.Push($"{val2}{val1}");
+            }
+            else if (op == "&")
+            {
+                string val1 = valueStack.Pop();
+                string val2 = valueStack.Pop();
+                valueStack.Push($"{val2}.*{val1}");
+            }else if (op == "!")
+            {
+                string val1 = valueStack.Pop();
+                string value = $"(?!{val1}).*";
+                valueStack.Push(value);
+            }
+        }
+        string finalValue = $"^{valueStack.Pop()}.+$";
+        return finalValue;
+    }
+
+
+    private string ProcessExpression(string expression)
+    {
+        string cleanedInput = expression.Replace("\"", "");
+
+        var parts = cleanedInput.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
         string pattern = "";
 
         foreach (var part in parts)
@@ -114,8 +201,8 @@ public class SentenceParserEditor : EditorWindow
             string cleanPart = part.TrimStart('&');
             string wordPattern = Regex.Replace(cleanPart, @"\[(.*?)\]", m =>
             {
-                string content = m.Groups[1].Value.Replace("/", "|"); // Replace / with | inside brackets
-                return content.Contains("|") ? $"({content})?" : $"[{content}]?"; // Use parentheses for alternatives
+                string content = m.Groups[1].Value.Replace("/", "|");
+                return content.Contains("|") ? $"({content})?" : $"[{content}]?";
             });
             wordPattern = @"\b" + wordPattern + @"\b";
             if (!string.IsNullOrEmpty(pattern))
@@ -124,21 +211,24 @@ public class SentenceParserEditor : EditorWindow
             }
             pattern += wordPattern;
         }
-        //Debug.Log("Final regex pattern: " + pattern);
 
-        return pattern;
+        string finaPattern = $".*{pattern}.*";
+
+        return finaPattern;
     }
 
     private bool IsCodeValid(string sentence, string code)
     {
 
 
-        string pattern = CreateRegexPattern(code);
+        string pattern = ConvertToRegex(code);
         Debug.Log($"Testing - pattern: {pattern} ");
         try
         {
-            //string testpattern = @"\blike\b.*\bbanana[s]?\b";
+            //string testpattern = @"\blike\b.*\bbanana[s]?\b";  \blike\b.*\bbanana[s]?\b 
             //string newTestPattern = @".*\blike\b.*\bbanana[s]?\b.*";
+            //string testpattern = @"^(?=.*\bprefer\b.*\bstrawberr(y|ies)\b)(?!.*\blike\b.*\bbanana(s)?\b).+$";//  ^(?=.*\bprefer\b.*\bstrawberr(y|ies)?\b.*)|(?!.*\blike\b.*\bbanana[s]?\b.*).+$   
+            //string text = @"\bprefer (strawberry|strawberries)\b(?!.*\blike bananas?\b)";
             bool isMatch = Regex.IsMatch(sentence, pattern, RegexOptions.IgnoreCase);
             Debug.Log($"Regex.IsMatch: {isMatch}");
             return isMatch;

@@ -12,5 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e538a63c8dd5e4bb381ec4b9f42813e6, type: 3}
   m_Name: New ParsingCode
   m_EditorClassIdentifier: 
-  code: '"(&prefer &strawberr[y/ies]) | !(&like &banana[s])"'
+  code: (&prefer &strawberr[y/ies]) | !(&like &banana[s])
   priority: 25
